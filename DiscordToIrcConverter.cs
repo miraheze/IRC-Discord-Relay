@@ -26,7 +26,7 @@ namespace IrcDiscordRelay
             messageContent = StrikethroughRegex.Replace(messageContent, "\x1E$1\x1E");
 
             // Replace Discord spoilers (||text||) with IRC formatting
-            messageContent = SpoilerRegex.Replace(messageContent, "\x031,1$1\x03");
+            messageContent = SpoilerRegex.Replace(messageContent, "\x031,1$1\x0F");
 
             // Parse <:emoji:0123456789> to :emoji:
             messageContent = EmojiRegex.Replace(messageContent, "$1");
