@@ -1,4 +1,4 @@
-﻿using Discord.WebSocket;
+using Discord.WebSocket;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -11,6 +11,7 @@ namespace IrcDiscordRelay
         private static readonly Regex ItalicRegex = new(@"\*(.*?)\*");
         private static readonly Regex UnderlineRegex = new(@"__(.*?)__");
         private static readonly Regex StrikethroughRegex = new(@"~~(.*?)~~");
+        private static readonly Regex SpoilerRegex = new(@"\|\|(.*?)\|\|");
         private static readonly Regex SlashCommandRegex = new(@"<\/(\w+):?\d*>");
         private static readonly Regex EmojiRegex = new(@"<([A-Za-z0-9-_]?:[A-Za-z0-9-_]+:)[0-9]+>");
 
@@ -23,6 +24,9 @@ namespace IrcDiscordRelay
             messageContent = ItalicRegex.Replace(messageContent, "\x1D$1\x1D");
             messageContent = UnderlineRegex.Replace(messageContent, "\x1F$1\x1F");
             messageContent = StrikethroughRegex.Replace(messageContent, "\x1E$1\x1E");
+
+            // Replace Discord spoilers (||text||) with IRC formatting
+            messageContent = SpoilerRegex.Replace(messageContent, "\x031,1$1\x03");
 
             // Parse <:emoji:0123456789> to :emoji:
             messageContent = EmojiRegex.Replace(messageContent, "$1");
