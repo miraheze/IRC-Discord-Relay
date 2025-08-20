@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Versions
+        run: dotnet --version
+      - name: Copy config.ini
+        run: cp .github/workflows/config.ini ./config.ini
+      - run: dotnet build IrcDiscordRelay.sln --configuration=Release
+      - run: dotnet build IrcDiscordRelay.sln --configuration=Debug
