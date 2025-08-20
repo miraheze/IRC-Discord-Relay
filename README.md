@@ -28,7 +28,7 @@ Proxy = the HTTP proxy to use for the Discord connection (if required)
 IncludeEdited = whether to include edited messages, prefixed with "(edited)" after the author, in the relay feeds (true or false, if required)
 
 [ChannelMapping]
-Each key in this section should be a Discord channel ID, and the corresponding value should be the name of the IRC channel to relay messages to. For example:
+# Each key in this section should be a Discord channel ID, and the corresponding value should be the name of the IRC channel to relay messages to. For example:
 123456789 = #irc-channel
 
 [IgnoreUsers]
