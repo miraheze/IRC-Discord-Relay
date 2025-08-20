@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  - push
+  - pull_request
+
+jobs:
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Versions
+        run: dotnet --version
+      - run: dotnet build IrcDiscordRelay.sln --configuration=Release
+      - run: dotnet build IrcDiscordRelay.sln --configuration=Debug
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Versions
+        run: dotnet --version
+      - run: dotnet build IrcDiscordRelay.sln --configuration=Release
+      - run: dotnet build IrcDiscordRelay.sln --configuration=Debug
