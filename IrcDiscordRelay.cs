@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -82,6 +83,7 @@ namespace IrcDiscordRelay
             ircClient = new IrcClient
             {
                 Encoding = Encoding.UTF8,
+                EnableUTF8Recode = true,
                 AutoReconnect = true,
                 AutoRejoin = true,
 
@@ -123,7 +125,10 @@ namespace IrcDiscordRelay
         public async Task Start()
         {
             // Connect to the IRC server and start listening for messages
-            ircClient.Connect(ircServer, ircPort);
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            IPAddress host = Dns.GetHostAddresses(ircServer)
+                .First(a => a.AddressFamily == AddressFamily.InterNetworkV6);
+            ircClient.Connect(host.ToString(), ircPort);
             ircClient.Login(ircNickname, ircRealname, 4, ircUsername, ircPassword);
 
             FileIniDataParser parser = new();
@@ -354,7 +359,10 @@ namespace IrcDiscordRelay
         private void IrcClient_OnDisconnected(object sender, EventArgs e)
         {
             // Reconnect to the IRC server
-            ircClient.Connect(ircServer, ircPort);
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            IPAddress host = Dns.GetHostAddresses(ircServer)
+                .First(a => a.AddressFamily == AddressFamily.InterNetworkV6);
+            ircClient.Connect(host.ToString(), ircPort);
             ircClient.Login(ircNickname, ircRealname, 4, ircUsername, ircPassword);
 
             FileIniDataParser parser = new();
