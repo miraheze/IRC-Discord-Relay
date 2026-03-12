@@ -125,7 +125,7 @@ namespace IrcDiscordRelay
         public async Task Start()
         {
             // Connect to the IRC server and start listening for messages
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls13;
             IPAddress host = Dns.GetHostAddresses(ircServer)
                 .First(a => a.AddressFamily == AddressFamily.InterNetworkV6);
             ircClient.Connect(host.ToString(), ircPort);
@@ -359,7 +359,7 @@ namespace IrcDiscordRelay
         private void IrcClient_OnDisconnected(object sender, EventArgs e)
         {
             // Reconnect to the IRC server
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls13;
             IPAddress host = Dns.GetHostAddresses(ircServer)
                 .First(a => a.AddressFamily == AddressFamily.InterNetworkV6);
             ircClient.Connect(host.ToString(), ircPort);
