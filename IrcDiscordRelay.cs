@@ -28,6 +28,12 @@ namespace IrcDiscordRelay
         private readonly string ircUsername;
         private readonly string ircPassword;
         private readonly bool ircUseSSL;
+        private readonly bool ircUseSasl;
+        private readonly ProxyType ircProxyType;
+        private readonly string ircProxyHost;
+        private readonly int ircProxyPort;
+        private readonly string ircProxyUsername;
+        private readonly string ircProxyPassword;
         private readonly string discordBotToken;
         private readonly string discordProxy;
         private readonly bool discordIncludeEdited;
@@ -56,6 +62,19 @@ namespace IrcDiscordRelay
             ircUsername = data["IRC"]["Username"] ?? ircNickname;
             ircPassword = data["IRC"]["Password"];
             ircUseSSL = bool.Parse(data["IRC"]["UseSSL"]);
+            ircUseSasl = bool.Parse(data["IRC"]["UseSASL"] ?? "false");
+
+            if (ircUseSasl && string.IsNullOrEmpty(ircPassword))
+            {
+                throw new InvalidOperationException("UseSASL needs a Password in the IRC section.");
+            }
+
+            string ircProxy = data["IRC"]["Proxy"];
+            if (!string.IsNullOrWhiteSpace(ircProxy))
+            {
+                (ircProxyType, ircProxyHost, ircProxyPort, ircProxyUsername, ircProxyPassword) = ParseIrcProxy(ircProxy.Trim());
+            }
+
             discordBotToken = data["Discord"]["BotToken"];
             discordProxy = data["Discord"]["Proxy"];
             discordIncludeEdited = bool.Parse(data["Discord"]["IncludeEdited"] ?? "false");
@@ -89,7 +108,13 @@ namespace IrcDiscordRelay
 
                 SendDelay = 300,
 
-                UseSsl = ircUseSSL
+                UseSsl = ircUseSSL,
+
+                ProxyType = ircProxyType,
+                ProxyHost = ircProxyHost,
+                ProxyPort = ircProxyPort,
+                ProxyUsername = ircProxyUsername,
+                ProxyPassword = ircProxyPassword
             };
             ircClient.OnConnected += IrcClient_OnConnected;
             ircClient.OnDisconnected += IrcClient_OnDisconnected;
@@ -97,6 +122,7 @@ namespace IrcDiscordRelay
             ircClient.OnChannelNotice += IrcClient_OnChannelNotice;
             ircClient.OnChannelAction += IrcClient_OnChannelAction;
             ircClient.OnError += IrcClient_OnError;
+            ircClient.OnReadLine += IrcClient_OnReadLine;
 
             if (discordProxy != null)
             {
@@ -125,10 +151,8 @@ namespace IrcDiscordRelay
         public async Task Start()
         {
             // Connect to the IRC server and start listening for messages
-            IPAddress host = Dns.GetHostAddresses(ircServer)
-                .First(a => a.AddressFamily == AddressFamily.InterNetworkV6);
-            ircClient.Connect(host.ToString(), ircPort);
-            ircClient.Login(ircNickname, ircRealname, 4, ircUsername, ircPassword);
+            ConnectToIrcServer();
+            ircClient.Login(ircNickname, ircRealname, 4, ircUsername, ircUseSasl ? null : ircPassword);
 
             FileIniDataParser parser = new();
             IniData data = parser.ReadFile("config.ini");
@@ -175,10 +199,66 @@ namespace IrcDiscordRelay
             ircClient.OnChannelNotice -= IrcClient_OnChannelNotice;
             ircClient.OnChannelAction -= IrcClient_OnChannelAction;
             ircClient.OnError -= IrcClient_OnError;
+            ircClient.OnReadLine -= IrcClient_OnReadLine;
 
             // Disconnect from the Discord bot
             await discordClient.StopAsync();
             await discordClient.LogoutAsync();
+        }
+
+        private void ConnectToIrcServer()
+        {
+            if (ircProxyType == ProxyType.None)
+            {
+                IPAddress host = Dns.GetHostAddresses(ircServer)
+                    .First(a => a.AddressFamily == AddressFamily.InterNetworkV6);
+                ircClient.Connect(host.ToString(), ircPort);
+            }
+            else if (ircProxyType == ProxyType.Socks4)
+            {
+                // SOCKS4 only takes an IPv4 address. Resolve it here.
+                IPAddress host = Dns.GetHostAddresses(ircServer)
+                    .First(a => a.AddressFamily == AddressFamily.InterNetwork);
+                ircClient.Connect(host.ToString(), ircPort);
+            }
+            else
+            {
+                // The proxy resolves the hostname. Local DNS stays out of it.
+                ircClient.Connect(ircServer, ircPort);
+            }
+        }
+
+        private static (ProxyType Type, string Host, int Port, string Username, string Password) ParseIrcProxy(string proxy)
+        {
+            if (!Uri.TryCreate(proxy, UriKind.Absolute, out Uri uri) || string.IsNullOrEmpty(uri.Host))
+            {
+                throw new FormatException($"Invalid IRC proxy '{proxy}'. Expected a URL like socks5://127.0.0.1:1080.");
+            }
+
+            ProxyType type = uri.Scheme.ToLowerInvariant() switch
+            {
+                "http" => ProxyType.Http,
+                "socks4" => ProxyType.Socks4,
+                "socks4a" => ProxyType.Socks4a,
+                "socks5" => ProxyType.Socks5,
+                _ => throw new FormatException($"Unsupported IRC proxy scheme '{uri.Scheme}'. Use http, socks4, socks4a or socks5.")
+            };
+
+            if (uri.Port <= 0)
+            {
+                throw new FormatException($"The IRC proxy '{proxy}' needs a port.");
+            }
+
+            string username = null;
+            string password = null;
+            if (!string.IsNullOrEmpty(uri.UserInfo))
+            {
+                string[] credentials = uri.UserInfo.Split(':', 2);
+                username = Uri.UnescapeDataString(credentials[0]);
+                password = credentials.Length > 1 ? Uri.UnescapeDataString(credentials[1]) : string.Empty;
+            }
+
+            return (type, uri.Host, uri.Port, username, password);
         }
 
         private void ParseIgnoreUsers(IniData data)
@@ -351,17 +431,108 @@ namespace IrcDiscordRelay
 
         private void IrcClient_OnConnected(object sender, EventArgs e)
         {
+            // Ask for SASL before NICK and USER go out. Registration waits for CAP END.
+            if (ircUseSasl)
+            {
+                ircClient.WriteLine("CAP REQ :sasl", Priority.Critical);
+            }
+
             // Notify the user that the IRC client has successfully connected
             Console.WriteLine($"Connected to {ircServer}:{ircPort}.");
+        }
+
+        private void IrcClient_OnReadLine(object sender, ReadLineEventArgs e)
+        {
+            if (!ircUseSasl)
+            {
+                return;
+            }
+
+            // Drop any message tags and the prefix, then split into command and parameters
+            string line = e.Line;
+            if (line.StartsWith('@'))
+            {
+                int tagEnd = line.IndexOf(' ');
+                if (tagEnd < 0)
+                {
+                    return;
+                }
+
+                line = line[(tagEnd + 1)..];
+            }
+
+            if (line.StartsWith(':'))
+            {
+                int prefixEnd = line.IndexOf(' ');
+                if (prefixEnd < 0)
+                {
+                    return;
+                }
+
+                line = line[(prefixEnd + 1)..];
+            }
+
+            string[] parts = line.Split(' ', 4);
+
+            try
+            {
+                if (parts[0] == "CAP" && parts.Length == 4 && parts[2] == "ACK" && parts[3].Contains("sasl"))
+                {
+                    ircClient.WriteLine("AUTHENTICATE PLAIN", Priority.Critical);
+                }
+                else if (parts[0] == "CAP" && parts.Length >= 3 && parts[2] == "NAK")
+                {
+                    Console.WriteLine("IRC server refused SASL. Continuing without it.");
+                    ircClient.WriteLine("CAP END", Priority.Critical);
+                }
+                else if (parts[0] == "AUTHENTICATE" && parts.Length >= 2 && parts[1] == "+")
+                {
+                    SendSaslCredentials();
+                }
+                else if (parts[0] == "903")
+                {
+                    Console.WriteLine($"Authenticated to {ircServer} with SASL.");
+                    ircClient.WriteLine("CAP END", Priority.Critical);
+                }
+                else if (parts[0] is "904" or "905" or "906" or "907")
+                {
+                    // 907 means already authenticated. The rest are failures.
+                    if (parts[0] != "907")
+                    {
+                        Console.WriteLine($"SASL authentication failed ({parts[0]}). Continuing without it.");
+                    }
+
+                    ircClient.WriteLine("CAP END", Priority.Critical);
+                }
+            }
+            catch (NotConnectedException)
+            {
+                // The connection dropped mid handshake. The reconnect logic starts it over.
+            }
+        }
+
+        private void SendSaslCredentials()
+        {
+            // PLAIN is an empty authzid, the account name and the password, split by NUL bytes
+            string payload = Convert.ToBase64String(Encoding.UTF8.GetBytes($"\0{ircNickname}\0{ircPassword}"));
+
+            // Long payloads go out in 400 byte pieces, with a lone + if the last piece is full
+            for (int i = 0; i < payload.Length; i += 400)
+            {
+                ircClient.WriteLine($"AUTHENTICATE {payload.Substring(i, Math.Min(400, payload.Length - i))}", Priority.Critical);
+            }
+
+            if (payload.Length % 400 == 0)
+            {
+                ircClient.WriteLine("AUTHENTICATE +", Priority.Critical);
+            }
         }
 
         private void IrcClient_OnDisconnected(object sender, EventArgs e)
         {
             // Reconnect to the IRC server
-            IPAddress host = Dns.GetHostAddresses(ircServer)
-                .First(a => a.AddressFamily == AddressFamily.InterNetworkV6);
-            ircClient.Connect(host.ToString(), ircPort);
-            ircClient.Login(ircNickname, ircRealname, 4, ircUsername, ircPassword);
+            ConnectToIrcServer();
+            ircClient.Login(ircNickname, ircRealname, 4, ircUsername, ircUseSasl ? null : ircPassword);
 
             FileIniDataParser parser = new();
             IniData data = parser.ReadFile("config.ini");
