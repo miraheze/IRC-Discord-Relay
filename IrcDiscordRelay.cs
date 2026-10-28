@@ -232,7 +232,7 @@ namespace IrcDiscordRelay
         {
             if (!Uri.TryCreate(proxy, UriKind.Absolute, out Uri uri) || string.IsNullOrEmpty(uri.Host))
             {
-                throw new FormatException($"Invalid IRC proxy '{proxy}'. Expected a URL like socks5://127.0.0.1:1080.");
+                throw new FormatException("Invalid IRC proxy. Expected a URL like socks5://127.0.0.1:1080.");
             }
 
             ProxyType type = uri.Scheme.ToLowerInvariant() switch
@@ -246,7 +246,7 @@ namespace IrcDiscordRelay
 
             if (uri.Port <= 0)
             {
-                throw new FormatException($"The IRC proxy '{proxy}' needs a port.");
+                throw new FormatException("The IRC proxy needs a port.");
             }
 
             string username = null;
