@@ -21,6 +21,8 @@ Realname = the real name to use for the IRC client (defaults to the nickname if 
 Username = the username to use for the IRC client (defaults to the nickname if not specified)
 Password = the password to use for the IRC client (if required)
 UseSSL = whether to use SSL for the IRC connection (true or false)
+UseSASL = whether to authenticate with SASL PLAIN, using the nickname as the account name and Password as the password, instead of sending Password as a server password (true or false, defaults to false)
+Proxy = the proxy to use for the IRC connection (if required), as a URL with an explicit port, for example socks5://127.0.0.1:1080 or http://user:pass@proxy.example.com:3128; supported schemes are http, socks4, socks4a and socks5
 
 [Discord]
 BotToken = the Discord bot token to use for the bot account
