@@ -9,6 +9,7 @@
 	"enabledManagers": [
 		"github-actions"
 	],
+	"dependencyDashboard": false,
 	"automerge": true,
 	"automergeType": "branch",
 	"prHourlyLimit": 0
